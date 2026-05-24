@@ -1458,6 +1458,16 @@ const coordResult = checkFuseCoordination(
   showKA * 1000
 );
 
+const suggestion =
+  coordResult.status === 'NOT_COORDINATE'
+    ? suggestUpstreamFuse(
+        document.getElementById('downstreamFuse').value,
+        showKA * 1000
+      )
+    : null;
+
+result.fuseSuggestion = suggestion;
+
 result.downstreamDf = downstreamDf;
 result.upstreamDf = upstreamDf;
 result.fuseCoordination = coordResult;
@@ -1477,7 +1487,11 @@ const upstreamText =
 
 const coordText =
   upstreamDf
-    ? `${downstreamDf.name} → ${upstreamText}: ${coordResult.message}`
+    ? (
+        coordResult.status === 'NOT_COORDINATE' && suggestion
+          ? `${downstreamDf.name} → ${upstreamText}: ${coordResult.message} | ${suggestion.message}`
+          : `${downstreamDf.name} → ${upstreamText}: ${coordResult.message}`
+      )
     : `ไม่สามารถตรวจ DF upstream ได้`;
 
 setStatus(
@@ -2024,6 +2038,39 @@ function checkFuseCoordination(loadFuse, sourceFuse, faultCurrentA){
     maxCoordA,
     marginA: maxCoordA - faultA,
     marginPercent: ((maxCoordA - faultA) / maxCoordA) * 100
+  };
+
+}
+
+function suggestUpstreamFuse(loadFuse, faultCurrentA){
+
+  const downstream = Number(loadFuse);
+  const faultA = Number(faultCurrentA);
+
+  const row = FUSE_COORD_TABLE[downstream];
+
+  if(!row){
+    return null;
+  }
+
+  const candidates = Object.keys(row)
+    .map(Number)
+    .sort((a,b)=>a-b)
+    .filter(upstream => row[upstream] >= faultA);
+
+  if(candidates.length === 0){
+    return null;
+  }
+
+  const suggested = candidates[0];
+
+  return {
+    downstreamFuse: downstream,
+    suggestedUpstreamFuse: suggested,
+    maxCoordA: row[suggested],
+    faultCurrentA: faultA,
+    marginA: row[suggested] - faultA,
+    message: `แนะนำใช้ Upstream Fuse ${suggested}K เพื่อให้สัมพันธ์กับ ${downstream}K`
   };
 
 }
