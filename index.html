@@ -133,6 +133,27 @@
       <button onclick="trackSelectedDevice()">2) Track + คำนวณ Fault</button>
       <button class="secondary" onclick="clearTrack()">ล้าง Track</button>
       <button class="danger" onclick="resetAll()">Reset ทั้งหมด</button>
+      <div>
+  <label>ค้นหารหัสอุปกรณ์</label>
+
+  <div style="display:flex;gap:6px;">
+
+    <input
+      id="deviceSearch"
+      placeholder="เช่น QSA08WF-122"
+      onkeydown="if(event.key==='Enter') searchDevice();"
+    >
+
+    <button
+      type="button"
+      onclick="searchDevice()"
+      style="width:auto;padding:0 16px;"
+    >
+      🔍
+    </button>
+
+  </div>
+</div>
     </div>
 
     <p class="small">
@@ -842,6 +863,146 @@ function drawRecloser(){
     }
 
   }).addTo(map);
+
+}
+
+function searchDevice(){
+
+  const keyword =
+    String(
+      document.getElementById('deviceSearch').value || ''
+    )
+    .trim()
+    .toUpperCase();
+
+  if(!keyword){
+    alert('กรุณาระบุรหัสอุปกรณ์');
+    return;
+  }
+
+  const allFeatures = [
+
+    ...(swGeojson?.features || []),
+
+    ...(cbGeojson?.features || []),
+
+    ...(rcGeojson?.features || [])
+
+  ];
+
+  let found = null;
+
+  for(const f of allFeatures){
+
+    const p = f.properties || {};
+
+    const text = String(
+      `${p.FACILITYID || ''} ${p.TAG || ''} ${p.FEEDERID || ''}`
+    ).toUpperCase();
+
+    if(text.includes(keyword)){
+
+      found = f;
+      break;
+
+    }
+
+  }
+
+  if(!found){
+
+    alert('ไม่พบอุปกรณ์');
+
+    return;
+
+  }
+
+  const ll = featurePointLatLng(found);
+
+  if(!ll){
+
+    alert('อุปกรณ์ไม่มีพิกัด');
+
+    return;
+
+  }
+
+  /* ===== zoom ===== */
+
+  map.setView(ll, 18, {
+    animate:true
+  });
+
+  /* ===== highlight ===== */
+
+  if(selectedMarker){
+    map.removeLayer(selectedMarker);
+  }
+
+  selectedMarker = L.circleMarker(ll,{
+
+    radius:14,
+
+    color:'#f97316',
+
+    fillColor:'#fff',
+
+    fillOpacity:1,
+
+    weight:4
+
+  }).addTo(map);
+
+  /* ===== select ===== */
+
+  selectedDevice = {
+    feature: found,
+    latlng: ll
+  };
+
+  /* ===== popup ===== */
+
+  openPopupForFeature(found, ll);
+
+  setStatus(
+    `พบอุปกรณ์: ${
+      found.properties?.FACILITYID ||
+      found.properties?.TAG ||
+      '-'
+    }`
+  );
+
+}
+
+function openPopupForFeature(feature, latlng){
+
+  const p = feature.properties || {};
+
+  const html = `
+    <b>Device</b><br>
+    TAG: ${p.TAG || '-'}<br>
+    FACILITYID: ${p.FACILITYID || '-'}<br>
+    FEEDERID: ${p.FEEDERID || '-'}<br>
+    LOCATION: ${p.LOCATION || '-'}<br>
+    <hr>
+    <button
+      onclick="trackSelectedDevice()"
+      style="
+        padding:6px 10px;
+        border:none;
+        border-radius:8px;
+        background:#6d28d9;
+        color:white;
+      "
+    >
+      Track + Fault
+    </button>
+  `;
+
+  L.popup()
+    .setLatLng(latlng)
+    .setContent(html)
+    .openOn(map);
 
 }
 
