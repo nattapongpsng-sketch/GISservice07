@@ -569,6 +569,99 @@ function drawSwitches(){
 
 }
 
+/* ================= DEVICE HELPER ================= */
+
+function getDeviceName(p){
+  return String(p.FACILITYID || p.TAG || '').trim();
+}
+
+function isSameDevice(a,b){
+
+  const pa = a.properties || {};
+  const pb = b.properties || {};
+
+  const aName =
+    getDeviceName(pa).toUpperCase();
+
+  const bName =
+    getDeviceName(pb).toUpperCase();
+
+  return aName && bName && aName === bName;
+
+}
+
+function findNextUpstreamFuseOnPath(
+  startNode,
+  pathEdges,
+  selectedFeature
+){
+
+  const pathEdgeIds = new Set(
+    pathEdges.map(e => e.id)
+  );
+
+  const all = dijkstraAll(startNode);
+
+  let bestFuse = null;
+
+  swGeojson.features.forEach(f => {
+
+    if(isSameDevice(f, selectedFeature)) return;
+
+    const p = f.properties || {};
+    const text = getDeviceText(p);
+
+    if(!isFuseTag(text)) return;
+
+    const ll = featurePointLatLng(f);
+    if(!ll) return;
+
+    const snap = findNearestEdgeToLatLng(ll);
+    if(!snap) return;
+
+    if(!pathEdgeIds.has(snap.edge.id)) return;
+
+    if(snap.distanceM > SNAP_TOLERANCE_M * 3) return;
+
+    const node =
+      nearestEdgeEndNode(snap.edge, ll);
+
+    const dist =
+      all.dist.get(node);
+
+    if(dist === undefined || !isFinite(dist)) return;
+
+    if(dist < 5) return;
+
+    const item = {
+
+      feature: f,
+
+      properties: p,
+
+      name: getDeviceName(p),
+
+      distanceFromSelected_m: dist,
+
+      snapDistance_m: snap.distanceM
+
+    };
+
+    if(
+      !bestFuse ||
+      item.distanceFromSelected_m
+      <
+      bestFuse.distanceFromSelected_m
+    ){
+      bestFuse = item;
+    }
+
+  });
+
+  return bestFuse;
+
+}
+
 /* ===== รวมข้อความรหัสอุปกรณ์จากหลาย field ===== */
 
 function getDeviceText(p){
@@ -1164,12 +1257,9 @@ async function trackSelectedDevice(){
 
     };
 
-    document.getElementById('resultBox').textContent =
-      JSON.stringify(result,null,2);
+/* ================= SHOW RESULT ================= */
 
-    /* ================= SHOW RESULT ================= */
-
-    let showKA =
+let showKA =
   fault.ifaultA / 1000;
 
 if(
@@ -1185,24 +1275,55 @@ if(
 
 }
 
+/* ===== หา DF ตัวถัดไปทาง Upstream ===== */
+
+const downstreamDf = {
+  name: getDeviceName(selectedDevice.feature.properties),
+  properties: selectedDevice.feature.properties
+};
+
+const upstreamDf =
+  findNextUpstreamFuseOnPath(
+    startNode,
+    best.path.edges,
+    selectedDevice.feature
+  );
+
+/* ===== Fuse Coordination ===== */
+
 const coordResult = checkFuseCoordination(
   document.getElementById('downstreamFuse').value,
   document.getElementById('upstreamFuse').value,
   showKA * 1000
 );
 
+result.downstreamDf = downstreamDf;
+result.upstreamDf = upstreamDf;
 result.fuseCoordination = coordResult;
 
-    const faultTypeText =
+document.getElementById('resultBox').textContent =
+  JSON.stringify(result,null,2);
+
+const faultTypeText =
   document.getElementById('faultType').value === '3PH'
     ? '3PH'
     : '1PH-G';
+
+const upstreamText =
+  upstreamDf
+    ? upstreamDf.name
+    : 'ไม่พบ DF ถัดไปบนเส้น Track';
+
+const coordText =
+  upstreamDf
+    ? `${downstreamDf.name} → ${upstreamText}: ${coordResult.message}`
+    : `ไม่สามารถตรวจ DF upstream ได้`;
 
 setStatus(
   `Track สำเร็จ ไปยัง CB ` +
   `ระยะ ${(best.path.distanceM/1000).toFixed(3)} km, ` +
   `${faultTypeText} ≈ ${Number(showKA).toFixed(3)} kA, ` +
-  `Fuse: ${coordResult.message}`
+  coordText
 );
 
     console.timeEnd('TRACK_TOTAL');
